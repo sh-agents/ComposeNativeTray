@@ -59,6 +59,8 @@ void sni_tray_quit(sni_tray *tray);
  * Must be called after sni_tray_run() returns. */
 void sni_tray_destroy(sni_tray *tray);
 
+int sni_host_registered(void);
+
 /* ── Tray properties ───────────────────────────────────────────────── */
 
 void sni_tray_set_icon(sni_tray *tray, const uint8_t *icon_data, size_t icon_len);

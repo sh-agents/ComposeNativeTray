@@ -349,6 +349,14 @@ Java_dev_nucleusframework_composenativetray_lib_linux_LinuxNativeBridge_nativeTa
     return result;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_dev_nucleusframework_composenativetray_lib_linux_LinuxNativeBridge_nativeHostRegistered(
+    JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return sni_host_registered() ? JNI_TRUE : JNI_FALSE;
+}
+
 /* ── Menu management ────────────────────────────────────────────────── */
 
 JNIEXPORT void JNICALL
