@@ -74,6 +74,7 @@ void sni_tray_set_menu_opened_callback(sni_tray *tray, sni_menu_opened_cb cb, vo
 
 /* Get last click coordinates (from Activate/ContextMenu). */
 void sni_tray_get_last_click_xy(sni_tray *tray, int32_t *x, int32_t *y);
+char *sni_tray_take_activation_token(sni_tray *tray);
 
 /* ── Menu management ───────────────────────────────────────────────── */
 

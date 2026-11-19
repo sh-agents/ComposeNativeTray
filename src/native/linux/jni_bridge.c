@@ -335,6 +335,20 @@ Java_dev_nucleusframework_composenativetray_lib_linux_LinuxNativeBridge_nativeGe
     (*env)->SetIntArrayRegion(env, outXY, 0, 2, buf);
 }
 
+JNIEXPORT jstring JNICALL
+Java_dev_nucleusframework_composenativetray_lib_linux_LinuxNativeBridge_nativeTakeActivationToken(
+    JNIEnv *env, jclass clazz, jlong handle)
+{
+    (void)clazz;
+    sni_tray *tray = (sni_tray *)(uintptr_t)handle;
+    if (!tray) return NULL;
+    char *token = sni_tray_take_activation_token(tray);
+    if (!token) return NULL;
+    jstring result = (*env)->NewStringUTF(env, token);
+    free(token);
+    return result;
+}
+
 /* ── Menu management ────────────────────────────────────────────────── */
 
 JNIEXPORT void JNICALL

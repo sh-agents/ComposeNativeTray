@@ -83,6 +83,8 @@ internal object LinuxNativeBridge {
         outXY: IntArray,
     )
 
+    @JvmStatic external fun nativeTakeActivationToken(handle: Long): String?
+
     // -- Menu management ---------------------------------------------------------
 
     @JvmStatic external fun nativeResetMenu(handle: Long)

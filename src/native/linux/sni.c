@@ -187,6 +187,7 @@ struct sni_tray {
     int32_t      last_click_x;
     int32_t      last_click_y;
     int64_t      last_activate_ms;
+    char        *activation_token;
 
     /* Callbacks */
     sni_click_cb      on_click;
@@ -510,7 +511,7 @@ static int sni_get_property(sd_bus *bus, const char *path, const char *interface
     if (strcmp(property, "Menu") == 0)
         return sd_bus_message_append(reply, "o", tray->current_menu_path);
     if (strcmp(property, "ItemIsMenu") == 0)
-        return sd_bus_message_append(reply, "b", 1);
+        return sd_bus_message_append(reply, "b", 0);
     if (strcmp(property, "IconName") == 0)
         return sd_bus_message_append(reply, "s", "");
     if (strcmp(property, "IconPixmap") == 0)
@@ -590,6 +591,29 @@ static int sni_secondary_activate(sd_bus_message *msg, void *userdata, sd_bus_er
     return sd_bus_reply_method_return(msg, "");
 }
 
+static int sni_provide_activation_token(sd_bus_message *msg, void *userdata, sd_bus_error *error) {
+    (void)error;
+    sni_tray *tray = userdata;
+    const char *token = NULL;
+    int r = sd_bus_message_read(msg, "s", &token);
+    if (r < 0) return r;
+
+    pthread_mutex_lock(&tray->click_lock);
+    free(tray->activation_token);
+    tray->activation_token = token != NULL && token[0] != '\0' ? strdup(token) : NULL;
+    pthread_mutex_unlock(&tray->click_lock);
+
+    return sd_bus_reply_method_return(msg, "");
+}
+
+char *sni_tray_take_activation_token(sni_tray *tray) {
+    pthread_mutex_lock(&tray->click_lock);
+    char *token = tray->activation_token;
+    tray->activation_token = NULL;
+    pthread_mutex_unlock(&tray->click_lock);
+    return token;
+}
+
 static int sni_scroll(sd_bus_message *msg, void *userdata, sd_bus_error *error) {
     (void)error; (void)userdata;
     return sd_bus_reply_method_return(msg, "");
@@ -625,6 +649,7 @@ static const sd_bus_vtable sni_vtable[] = {
     SD_BUS_METHOD("ContextMenu",        "ii", "", sni_context_menu,       SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("SecondaryActivate",  "ii", "", sni_secondary_activate, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Scroll",             "is", "", sni_scroll,             SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD("ProvideXdgActivationToken", "s", "", sni_provide_activation_token, SD_BUS_VTABLE_UNPRIVILEGED),
 
     /* Signals */
     SD_BUS_SIGNAL("NewTitle",         "",  0),
@@ -1110,6 +1135,31 @@ sni_tray *sni_tray_create(const uint8_t *icon_data, size_t icon_len,
     return tray;
 }
 
+static void register_with_watcher(sni_tray *tray) {
+    sd_bus_error err = SD_BUS_ERROR_NULL;
+    int r = sd_bus_call_method(tray->bus,
+                               WATCHER_BUS, WATCHER_PATH, WATCHER_IFACE,
+                               "RegisterStatusNotifierItem",
+                               &err, NULL, "s", SNI_PATH);
+    if (r < 0) {
+        fprintf(stderr, "sni: failed to register with watcher: %s\n",
+                err.message ? err.message : strerror(-r));
+    }
+    sd_bus_error_free(&err);
+}
+
+static int on_name_owner_changed(sd_bus_message *msg, void *userdata, sd_bus_error *error) {
+    (void)error;
+    const char *name = NULL;
+    const char *old_owner = NULL;
+    const char *new_owner = NULL;
+    if (sd_bus_message_read(msg, "sss", &name, &old_owner, &new_owner) < 0) return 0;
+    if (strcmp(name, WATCHER_BUS) == 0 && new_owner[0] != '\0') {
+        register_with_watcher(userdata);
+    }
+    return 0;
+}
+
 int sni_tray_run(sni_tray *tray) {
     int r;
 
@@ -1150,22 +1200,16 @@ int sni_tray_run(sni_tray *tray) {
     r = sd_bus_request_name(tray->bus, name, 0);
     if (r < 0) {
         fprintf(stderr, "sni: failed to request bus name '%s': %s\n", name, strerror(-r));
-        bus_unlock(tray);
-        return r;
     }
 
-    /* Register with StatusNotifierWatcher */
-    sd_bus_error err = SD_BUS_ERROR_NULL;
-    r = sd_bus_call_method(tray->bus,
-                           WATCHER_BUS, WATCHER_PATH, WATCHER_IFACE,
-                           "RegisterStatusNotifierItem",
-                           &err, NULL, "s", SNI_PATH);
+    r = sd_bus_match_signal(tray->bus, NULL,
+                            "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                            "NameOwnerChanged", on_name_owner_changed, tray);
     if (r < 0) {
-        fprintf(stderr, "sni: failed to register with watcher: %s\n",
-                err.message ? err.message : strerror(-r));
-        sd_bus_error_free(&err);
-        /* Not fatal — some environments don't have a watcher */
+        fprintf(stderr, "sni: failed to watch the watcher's owner: %s\n", strerror(-r));
     }
+
+    register_with_watcher(tray);
 
     tray->running = 1;
     int bus_fd = sd_bus_get_fd(tray->bus);
@@ -1238,6 +1282,7 @@ void sni_tray_destroy(sni_tray *tray) {
     free(tray->title);
     free(tray->tooltip_text);
     free(tray->bus_name);
+    free(tray->activation_token);
     free_pixmap_list(&tray->icon_pixmaps);
     free_menu_items(tray);
     free(tray->pending);

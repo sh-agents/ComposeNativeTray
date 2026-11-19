@@ -4,6 +4,7 @@ import dev.nucleusframework.composenativetray.utils.TrayClickTracker
 import dev.nucleusframework.composenativetray.utils.errorln
 import dev.nucleusframework.composenativetray.utils.infoln
 import dev.nucleusframework.composenativetray.utils.warnln
+import dev.nucleusframework.core.runtime.ActivationToken
 import dev.nucleusframework.core.runtime.LinuxDesktopEnvironment
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -173,6 +174,7 @@ internal class LinuxTrayManager(
                         TrayClickTracker.recordClick(xy[0], xy[1])
                     } catch (_: Throwable) {
                     }
+                    native.nativeTakeActivationToken(trayHandle)?.let(ActivationToken::offer)
                     onLeftClick?.invoke()
                 },
             )
