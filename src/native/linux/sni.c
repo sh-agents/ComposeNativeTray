@@ -1139,11 +1139,18 @@ int sni_host_registered(void) {
     sd_bus *bus = NULL;
     sd_bus_error err = SD_BUS_ERROR_NULL;
     int registered = 0;
-    if (sd_bus_open_user(&bus) < 0) return 0;
-    int r = sd_bus_get_property_trivial(bus,
+    int r = sd_bus_open_user(&bus);
+    if (r < 0) {
+        fprintf(stderr, "sni: no session bus: %s\n", strerror(-r));
+        return 0;
+    }
+    r = sd_bus_get_property_trivial(bus,
                                         WATCHER_BUS, WATCHER_PATH, WATCHER_IFACE,
                                         "IsStatusNotifierHostRegistered",
                                         &err, 'b', &registered);
+    if (r < 0) {
+        fprintf(stderr, "sni: no status notifier host: %s\n", err.message ? err.message : strerror(-r));
+    }
     sd_bus_error_free(&err);
     sd_bus_flush_close_unref(bus);
     return r >= 0 && registered;
